@@ -1,15 +1,36 @@
 import asyncio
-import logging
-from aiogram import Bot, Dispatcher,F
 
+from bot.logger import get_logger
+from aiogram import Bot, Dispatcher, F, Router
+from aiogram.dispatcher import router
+from bot.navigate.start import router as start_router
+from aiogram.fsm.storage.memory import MemoryStorage
+from bot.handlers.message_list import router as message_router
+from bot.handlers.account_list import router as accounts_router
+from bot.handlers.chats_list import router as chats_router
 from config import config
 
+
+logger = get_logger(__name__)
+
+router = Router()
 bot = Bot(token=config.bot_token)
 dp = Dispatcher()
 
 async def main():
-    logging.basicConfig(level=logging.INFO)
+    logger.info("Starting bot...")
+    dp.include_router(router)
+
+    dp.include_router(message_router)
+    dp.include_router(accounts_router)
+    dp.include_router(chats_router)
+    dp.include_router(start_router)
+
     await dp.start_polling(bot)
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    try:
+        logger.info("Bot is running...")
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Bot stopped by user.")

@@ -45,6 +45,7 @@ CREATE TABLE chats (
 
 CREATE TABLE messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
     content TEXT NOT NULL,
     interval_hours INTEGER DEFAULT 24,
     is_enabled BOOLEAN DEFAULT 1,
