@@ -3,7 +3,7 @@ from sqlalchemy.orm import sessionmaker
 
 from bot import logger
 from db.model import Base, Message, Chat, MessageChatMapping, Account, User
-
+from config import admin
 engine = create_engine('sqlite:///data.db')
 Base.metadata.create_all(engine)
 SessionLocal = sessionmaker(bind=engine)
@@ -169,30 +169,37 @@ def save_message(name: str, content: str, interval_hours: int):
 
 
 def save_account(phone, session_file, api_id=None, api_hash=None, is_active=True):
-    conn = get_db()
-    cursor = conn.cursor()
-    admin_telegram_id = 123456789
+    """Сохраняет аккаунт через SQLAlchemy (исправлено)"""
+    db = next(get_db())
+    try:
+        admin_telegram_id=admin
 
-    cursor.execute("""
-                   INSERT
-                   OR IGNORE INTO users (telegram_id, username, role) 
-        VALUES (?, ?, 'admin')
-                   """, (admin_telegram_id, f"admin_{admin_telegram_id}"))
+        user = db.query(User).filter(User.telegram_id == admin_telegram_id).first()
+        if not user:
+            user = User(
+                telegram_id=admin_telegram_id,
+                username=f"admin_{admin_telegram_id}",
+                role="admin"
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
 
-    cursor.execute("""
-                   SELECT id
-                   FROM users
-                   WHERE telegram_id = ?
-                   """, (admin_telegram_id,))
-    user_id = cursor.fetchone()[0]
 
-    cursor.execute("""
-                   INSERT INTO accounts (user_id, phone, session_file, api_id, api_hash, is_active)
-                   VALUES (?, ?, ?, ?, ?, ?)
-                   """, (user_id, phone, session_file, api_id, api_hash, is_active))
-
-    conn.commit()
-    conn.close()
+        account = Account(
+            user_id=user.id,
+            phone=phone,
+            session_file=session_file,
+            api_id=api_id,
+            api_hash=api_hash,
+            is_active=is_active
+        )
+        db.add(account)
+        db.commit()
+        db.refresh(account)
+        return account.id
+    finally:
+        db.close()
 
 def save_chat(chat_id: str, title: str):
     db = next(get_db())
