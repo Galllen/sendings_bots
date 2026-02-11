@@ -168,16 +168,31 @@ def save_message(name: str, content: str, interval_hours: int):
         db.close()
 
 
-def save_account(phone: str, session_file: str):
-    db = next(get_db())
-    try:
-        new_acc = Account(phone=phone, session_file=session_file)
-        db.add(new_acc)
-        db.commit()
-        db.refresh(new_acc)
-        return new_acc.id
-    finally:
-        db.close()
+def save_account(phone, session_file, api_id=None, api_hash=None, is_active=True):
+    conn = get_db()
+    cursor = conn.cursor()
+    admin_telegram_id = 123456789
+
+    cursor.execute("""
+                   INSERT
+                   OR IGNORE INTO users (telegram_id, username, role) 
+        VALUES (?, ?, 'admin')
+                   """, (admin_telegram_id, f"admin_{admin_telegram_id}"))
+
+    cursor.execute("""
+                   SELECT id
+                   FROM users
+                   WHERE telegram_id = ?
+                   """, (admin_telegram_id,))
+    user_id = cursor.fetchone()[0]
+
+    cursor.execute("""
+                   INSERT INTO accounts (user_id, phone, session_file, api_id, api_hash, is_active)
+                   VALUES (?, ?, ?, ?, ?, ?)
+                   """, (user_id, phone, session_file, api_id, api_hash, is_active))
+
+    conn.commit()
+    conn.close()
 
 def save_chat(chat_id: str, title: str):
     db = next(get_db())
