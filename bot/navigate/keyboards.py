@@ -1,12 +1,15 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+import os
+from db.base import is_account_session_valid
 
-MAX_BUTTON_TEXT_LENGTH = 30  # Максимальная длина текста кнопки
+MAX_BUTTON_TEXT_LENGTH = 30
+
 
 def truncate(text, max_len=MAX_BUTTON_TEXT_LENGTH):
-    """Обрезает текст, если он длиннее max_len."""
     if len(text) > max_len:
         return text[:max_len - 3] + "..."
     return text
+
 
 def main_menu_kb():
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -17,13 +20,13 @@ def main_menu_kb():
     ])
     return keyboard
 
+
 def reply_menu_kb():
-    keyboard = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="/start")]],
-        resize_keyboard=True,
-        one_time_keyboard=True
-    )
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="/start", callback_data="start")]
+    ])
     return keyboard
+
 
 def messages_list_kb(messages, offset, total):
     keyboard = []
@@ -49,23 +52,42 @@ def messages_list_kb(messages, offset, total):
         InlineKeyboardButton(text="🔙 Назад к меню", callback_data="main_menu")
     ]
 
-    keyboard.append(nav_buttons)
+    if nav_buttons:
+        keyboard.append(nav_buttons)
     keyboard.append(action_buttons)
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
 
 def message_detail_kb(msg_id: int, is_enabled: bool):
     status_btn_text = "🔴 Деактивировать" if is_enabled else "🟢 Активировать"
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=status_btn_text, callback_data=f"toggle_message_status:{msg_id}")],
-        [InlineKeyboardButton(text="⬅️ Назад к списку", callback_data="back_to_messages")],
+        [InlineKeyboardButton(text="📎 Привязать чаты", callback_data=f"link_chats:{msg_id}")],
+        [InlineKeyboardButton(text="🗑️ Удалить", callback_data=f"del_message:{msg_id}")],
         [InlineKeyboardButton(text="🔙 Назад к меню", callback_data="main_menu")]
     ])
     return kb
 
+
+def link_chats_kb(msg_id: int):
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 Отмена", callback_data=f"message:{msg_id}")]
+    ])
+    return kb
+
+
 def accounts_list_kb(accounts, offset, total):
     keyboard = []
     for acc in accounts:
-        status_icon = "✅" if acc.is_active else "🚫"
+        session_valid = is_account_session_valid(acc.session_file)
+
+        if not acc.is_active:
+            status_icon = "🔴"
+        elif not session_valid:
+            status_icon = "⚠️"
+        else:
+            status_icon = "✅"
+
         phone = truncate(acc.phone)
         keyboard.append([
             InlineKeyboardButton(
@@ -86,18 +108,36 @@ def accounts_list_kb(accounts, offset, total):
         InlineKeyboardButton(text="🔙 Назад к меню", callback_data="main_menu")
     ]
 
-    keyboard.append(nav_buttons)
+    if nav_buttons:
+        keyboard.append(nav_buttons)
     keyboard.append(action_buttons)
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
-def account_detail_kb(acc_id: int, is_active: bool):
+
+def account_detail_kb(acc_id: int, is_active: bool, session_valid: bool):
+    keyboard = []
+
+    if not session_valid:
+        keyboard.append([
+            InlineKeyboardButton(
+                text="🔄 Повторить авторизацию",
+                callback_data=f"reauth_account:{acc_id}"
+            )
+        ])
+
     status_btn_text = "🔴 Деактивировать" if is_active else "🟢 Активировать"
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=status_btn_text, callback_data=f"toggle_account:{acc_id}")],
-        [InlineKeyboardButton(text="⬅️ Назад к списку", callback_data="back_to_accounts")],
-        [InlineKeyboardButton(text="🔙 Назад к меню", callback_data="main_menu")]
+    keyboard.append([
+        InlineKeyboardButton(text=status_btn_text, callback_data=f"toggle_account:{acc_id}")
     ])
-    return kb
+    keyboard.append([
+        InlineKeyboardButton(text="⬅️ Назад к списку", callback_data="back_to_accounts")
+    ])
+    keyboard.append([
+        InlineKeyboardButton(text="🔙 Назад к меню", callback_data="main_menu")
+    ])
+
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
 
 def chats_list_kb(chats, offset, total):
     keyboard = []
@@ -124,9 +164,11 @@ def chats_list_kb(chats, offset, total):
         InlineKeyboardButton(text="🔙 Назад к меню", callback_data="main_menu")
     ]
 
-    keyboard.append(nav_buttons)
+    if nav_buttons:
+        keyboard.append(nav_buttons)
     keyboard.append(action_buttons)
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
 
 def chat_detail_kb(chat_id: int, is_enabled: bool):
     status_btn_text = "🔴 Деактивировать" if is_enabled else "🟢 Активировать"

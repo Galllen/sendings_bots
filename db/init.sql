@@ -47,7 +47,7 @@ CREATE TABLE messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     content TEXT NOT NULL,
-    interval_hours INTEGER DEFAULT 24,
+    interval_hours REAL DEFAULT 24.0,
     is_enabled BOOLEAN DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     tag_id INTEGER,
