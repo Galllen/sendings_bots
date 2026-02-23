@@ -1,8 +1,10 @@
 import os
+from datetime import datetime, timedelta
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from bot import logger
-from db.model import Base, Message, Chat, MessageChatMapping, Account, User, Tag
+from db.model import Base, Message, Chat, MessageChatMapping, Account, User, Tag, SentHistory, DailyStats
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -230,10 +232,23 @@ def save_account(phone, session_file, api_id=None, api_hash=None, is_active=True
     finally:
         db.close()
 
+def get_all_chats(only_enabled: bool = True):
+    db = next(get_db())
+    try:
+        query = db.query(Chat)
+        if only_enabled:
+            query = query.filter(Chat.is_enabled == True)
+        return query.order_by(Chat.id).all()
+    finally:
+        db.close()
 
 def save_chat(chat_id: str, title: str):
     db = next(get_db())
     try:
+        existing = db.query(Chat).filter(Chat.chat_id == chat_id).first()
+        if existing:
+            return None
+
         new_chat = Chat(chat_id=chat_id, title=title)
         db.add(new_chat)
         db.commit()
@@ -323,5 +338,74 @@ def get_linked_chats_for_message(message_id: int):
             if chat:
                 chats.append(chat)
         return chats
+    finally:
+        db.close()
+
+
+def del_account_by_id(account_id: int) -> bool:
+    db = next(get_db())
+    try:
+        account = db.query(Account).filter(Account.id == account_id).first()
+        if not account:
+            return False
+
+        db.query(SentHistory).filter(SentHistory.account_id == account_id).delete()
+        db.query(DailyStats).filter(DailyStats.account_id == account_id).delete()
+
+        db.delete(account)
+        db.commit()
+        return True
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Ошибка удаления аккаунта {account_id}: {e}")
+        return False
+    finally:
+        db.close()
+
+
+def del_chat_by_id(chat_id: int) -> bool:
+    db = next(get_db())
+    try:
+        chat = db.query(Chat).filter(Chat.id == chat_id).first()
+        if not chat:
+            return False
+
+        db.query(MessageChatMapping).filter(MessageChatMapping.chat_id == chat_id).delete()
+        db.query(SentHistory).filter(SentHistory.chat_id == chat_id).delete()
+
+        db.delete(chat)
+        db.commit()
+        return True
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Ошибка удаления чата {chat_id}: {e}")
+        return False
+    finally:
+        db.close()
+
+def get_today_successful_sent_count():
+    db = next(get_db())
+    try:
+        today = datetime.utcnow().date()
+        count = db.query(SentHistory).filter(
+            SentHistory.sent_at >= today,
+            SentHistory.sent_at < today + timedelta(days=1),
+            SentHistory.status == 'success'
+        ).count()
+        return count
+    finally:
+        db.close()
+
+def get_sent_history_by_chat(chat_id: int, limit: int = 10):
+    db = next(get_db())
+    try:
+        history = (
+            db.query(SentHistory)
+            .filter(SentHistory.chat_id == chat_id)
+            .order_by(SentHistory.sent_at.desc())
+            .limit(limit)
+            .all()
+        )
+        return history
     finally:
         db.close()

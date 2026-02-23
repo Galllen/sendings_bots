@@ -16,7 +16,7 @@ def main_menu_kb():
         [InlineKeyboardButton(text="📃 Сообщения", callback_data="messages:start:0")],
         [InlineKeyboardButton(text="👤 Аккаунты", callback_data="accounts:start:0")],
         [InlineKeyboardButton(text="💬 Чаты", callback_data="chats:start:0")],
-        [InlineKeyboardButton(text="📤 Отправления", callback_data="broadcast")]
+        [InlineKeyboardButton(text="📤 Отправления", callback_data="broadcast_history:start:0")]
     ])
     return keyboard
 
@@ -130,6 +130,9 @@ def account_detail_kb(acc_id: int, is_active: bool, session_valid: bool):
         InlineKeyboardButton(text=status_btn_text, callback_data=f"toggle_account:{acc_id}")
     ])
     keyboard.append([
+        InlineKeyboardButton(text="🗑️ Удалить", callback_data=f"del_account:{acc_id}")
+    ])
+    keyboard.append([
         InlineKeyboardButton(text="⬅️ Назад к списку", callback_data="back_to_accounts")
     ])
     keyboard.append([
@@ -174,7 +177,50 @@ def chat_detail_kb(chat_id: int, is_enabled: bool):
     status_btn_text = "🔴 Деактивировать" if is_enabled else "🟢 Активировать"
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=status_btn_text, callback_data=f"toggle_chat:{chat_id}")],
+        [InlineKeyboardButton(text="🗑️ Удалить", callback_data=f"del_chat:{chat_id}")],
         [InlineKeyboardButton(text="⬅️ Назад к списку", callback_data="back_to_chats")],
+        [InlineKeyboardButton(text="🔙 Назад к меню", callback_data="main_menu")]
+    ])
+    return kb
+
+def chats_list_kb_for_history(chats, offset, total):
+    keyboard = []
+    for chat in chats:
+        title = truncate(chat.title or "Без названия")
+        chat_id = truncate(str(chat.chat_id))
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"{title} ({chat_id})",
+                callback_data=f"chat_history:{chat.id}"
+            )
+        ])
+
+    nav_buttons = []
+    limit = 5
+    if offset > 0:
+        nav_buttons.append(InlineKeyboardButton(
+            text="◀️ Назад",
+            callback_data=f"broadcast_history:start:{offset - limit}"
+        ))
+    if offset + limit < total:
+        nav_buttons.append(InlineKeyboardButton(
+            text="Далее ▶️",
+            callback_data=f"broadcast_history:start:{offset + limit}"
+        ))
+
+    action_buttons = [
+        InlineKeyboardButton(text="🔙 Назад к меню", callback_data="main_menu")
+    ]
+
+    if nav_buttons:
+        keyboard.append(nav_buttons)
+    keyboard.append(action_buttons)
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def back_to_history_menu_kb():
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬅️ Назад к списку чатов", callback_data="back_to_broadcast_history")],
         [InlineKeyboardButton(text="🔙 Назад к меню", callback_data="main_menu")]
     ])
     return kb

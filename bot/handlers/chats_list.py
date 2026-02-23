@@ -2,7 +2,7 @@ from aiogram import Router, types
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from bot.navigate.keyboards import chats_list_kb, chat_detail_kb
-from db.base import get_chats_paginated, get_chat_by_id, toggle_chat_status, save_chat
+from db.base import get_chats_paginated, get_chat_by_id, toggle_chat_status, save_chat, del_chat_by_id
 
 router = Router()
 
@@ -79,12 +79,32 @@ async def finish_add_chat(message: types.Message, state: FSMContext):
     chat_id = data.get("chat_id")
     title = message.text or None
 
-    save_chat(chat_id, title)
+    new_id = save_chat(chat_id, title)
 
-    await message.answer(f"Чат {chat_id} добавлен!")
+    if new_id is None:
+        await message.answer(f"⚠️ Чат {chat_id} уже существует в базе!")
+    else:
+        await message.answer(f"✅ Чат {chat_id} добавлен!")
+
     await state.clear()
 
     offset = 0
     chats, total = get_chats_paginated(offset, 5)
     kb = chats_list_kb(chats, offset, total)
     await message.answer("Чаты:", reply_markup=kb)
+
+@router.callback_query(lambda c: c.data.startswith("del_chat:"))
+async def delete_chat(callback: types.CallbackQuery):
+    try:
+        chat_id = int(callback.data.split(":")[1])
+        success = del_chat_by_id(chat_id)
+        if success:
+            await callback.answer("✅ Чат удалён", show_alert=True)
+            offset = 0
+            chats, total = get_chats_paginated(offset, 5)
+            kb = chats_list_kb(chats, offset, total)
+            await callback.message.edit_text("Чаты:", reply_markup=kb)
+        else:
+            await callback.answer("❌ Чат не найден", show_alert=True)
+    except Exception as e:
+        await callback.answer(f"Ошибка: {str(e)}", show_alert=True)

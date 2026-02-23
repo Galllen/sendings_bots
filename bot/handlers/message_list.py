@@ -13,7 +13,7 @@ from db.base import (
     get_unlinked_chats_for_message,
     link_message_to_chats,
     get_linked_chats_for_message,
-    del_message_by_id
+    del_message_by_id, get_all_chats
 )
 
 router = Router()
@@ -69,16 +69,13 @@ async def show_message_detail(callback: types.CallbackQuery):
 @router.callback_query(lambda c: c.data.startswith("del_message:"))
 async def del_message(callback: types.CallbackQuery):
     try:
-        # Извлекаем ID из колбэка вида "del_message:123"
         msg_id = int(callback.data.split(":")[1].strip())  # ← .strip() защищает от пробелов
 
-        # Вызываем функцию удаления
         success = del_message_by_id(msg_id)
 
         if success:
             await callback.answer(f"✅ Сообщение ID={msg_id} удалено", show_alert=True)
 
-            # Возвращаемся к списку сообщений
             offset = 0
             messages, total = get_messages_paginated(offset, 5)
             kb = messages_list_kb(messages, offset, total)
@@ -87,11 +84,9 @@ async def del_message(callback: types.CallbackQuery):
             await callback.answer(f"⚠️ Сообщение ID={msg_id} не найдено", show_alert=True)
 
     except (IndexError, ValueError) as e:
-        # Логируем ошибку для отладки
         logger.error(f"Ошибка парсинга ID при удалении: callback_data='{callback.data}', error={e}")
         await callback.answer("❌ Ошибка формата данных. Обратитесь к администратору.", show_alert=True)
     except NameError as e:
-        # Если функция del_message_by_id не импортирована
         logger.critical(f"Функция del_message_by_id не найдена! Ошибка: {e}")
         await callback.answer("❌ Критическая ошибка: функция удаления не загружена", show_alert=True)
     except Exception as e:
@@ -196,37 +191,46 @@ async def finish_add_message(message: types.Message, state: FSMContext):
 @router.callback_query(lambda c: c.data.startswith("link_chats:"))
 async def start_linking_chats(callback: types.CallbackQuery, state: FSMContext):
     msg_id = int(callback.data.split(":")[1])
-    unlinked_chats = get_unlinked_chats_for_message(msg_id)
 
-    if not unlinked_chats:
-        await callback.answer("Нет доступных чатов для привязки", show_alert=True)
+
+    all_chats = get_all_chats(only_enabled=True)
+    if not all_chats:
+        await callback.answer("Нет доступных чатов", show_alert=True)
         return
 
-    chat_list = "\n".join([
-        f"{i + 1}. {c.title or 'Без названия'} (ID: {c.id})"
-        for i, c in enumerate(unlinked_chats[:10])
-    ])
+    linked_chats = get_linked_chats_for_message(msg_id)
+    linked_ids = {c.id for c in linked_chats}
+
+    lines = []
+    chat_ids_in_order = []
+    for idx, chat in enumerate(all_chats, start=1):
+        marker = "✅" if chat.id in linked_ids else "⬜"
+        title = chat.title or "Без названия"
+        lines.append(f"{idx}. {marker} {title} (ID: {chat.id})")
+        chat_ids_in_order.append(chat.id)
 
     await state.update_data(
         message_id=msg_id,
-        available_chat_ids=[c.id for c in unlinked_chats[:10]]
+        all_chat_ids=chat_ids_in_order
     )
 
     await callback.message.edit_text(
         f"📎 Привязка чатов к сообщению\n\n"
-        f"Доступные чаты:\n{chat_list}\n\n"
-        f"Отправьте ID чата (или несколько через запятую, например: 1,3,5):",
+        f"Выберите чаты, в которые будет отправляться сообщение.\n"
+        f"✅ – уже привязан,  – 🚫 не привязан.\n\n"
+        f"Введите номера через запятую (например: 1,3,5).\n"
+        f"Все неперечисленные чаты будут отвязаны.\n\n"
+        + "\n".join(lines),
         reply_markup=link_chats_kb(msg_id)
     )
     await state.set_state(LinkingChats.waiting_for_chat_ids)
     await callback.answer()
 
-
 @router.message(LinkingChats.waiting_for_chat_ids)
 async def process_chat_ids(message: types.Message, state: FSMContext):
     data = await state.get_data()
     msg_id = data['message_id']
-    available_chat_ids = data['available_chat_ids']
+    all_chat_ids = data['all_chat_ids']
 
     try:
         input_ids = message.text.strip().replace(' ', ',').split(',')
@@ -238,12 +242,11 @@ async def process_chat_ids(message: types.Message, state: FSMContext):
                 continue
             try:
                 idx = int(id_str) - 1
-                if 0 <= idx < len(available_chat_ids):
-                    selected_ids.append(available_chat_ids[idx])
+                if 0 <= idx < len(all_chat_ids):
+                    selected_ids.append(all_chat_ids[idx])
                 else:
-                    # Попробуем как реальный ID чата
                     chat_id = int(id_str)
-                    if chat_id in available_chat_ids:
+                    if chat_id in all_chat_ids:
                         selected_ids.append(chat_id)
             except ValueError:
                 continue

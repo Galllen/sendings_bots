@@ -1,0 +1,13 @@
+version: "3.9"
+
+services:
+  bot:
+    build: .
+    container_name: sending_bot
+    restart: always
+    command: python -m bot.main
+    env_file:
+      - .env
+    working_dir: /app
+    volumes:
+      - /root/tech_spec/bot.db:/app/bot.db

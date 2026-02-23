@@ -16,7 +16,7 @@ from db.base import (
     get_accounts_paginated,
     get_account_by_id,
     is_account_session_valid,
-    toggle_account_status
+    toggle_account_status, del_account_by_id
 )
 from bot.navigate.keyboards import accounts_list_kb, account_detail_kb
 
@@ -297,3 +297,21 @@ async def process_password(message: types.Message, state: FSMContext):
     except Exception as e:
         await client.disconnect()
         await message.answer(f"❌ Ошибка авторизации: {str(e)}\nПопробуйте снова:")
+
+
+@router.callback_query(lambda c: c.data.startswith("del_account:"))
+async def delete_account(callback: types.CallbackQuery):
+    try:
+        acc_id = int(callback.data.split(":")[1])
+        success = del_account_by_id(acc_id)
+        if success:
+            await callback.answer("✅ Аккаунт удалён", show_alert=True)
+            accounts, total = await asyncio.to_thread(get_accounts_paginated, 0, 5)
+            await callback.message.edit_text(
+                f"👤 У вас {total} аккаунт(ов):",
+                reply_markup=accounts_list_kb(accounts, 0, total)
+            )
+        else:
+            await callback.answer("❌ Аккаунт не найден", show_alert=True)
+    except Exception as e:
+        await callback.answer(f"Ошибка: {str(e)}", show_alert=True)

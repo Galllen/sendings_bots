@@ -7,7 +7,7 @@ Base = declarative_base()
 
 
 class User(Base):
-    __tablename__ = 'users'  # ← ДВОЙНЫЕ подчёркивания!
+    __tablename__ = 'users'
 
     id = Column(Integer, primary_key=True)
     telegram_id = Column(Integer, unique=True, nullable=False)
@@ -57,12 +57,12 @@ class Chat(Base):
 
 
 class Message(Base):
-    __tablename__ = 'messages'  # ← ДВОЙНЫЕ подчёркивания!
+    __tablename__ = 'messages'
 
     id = Column(Integer, primary_key=True)
     name = Column(Text, nullable=False)
     content = Column(Text, nullable=False)
-    interval_hours = Column(Float, default=24.0)  # ← FLOAT вместо INTEGER!
+    interval_hours = Column(Float, default=24.0)
     is_enabled = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     tag_id = Column(Integer, ForeignKey('tags.id'))

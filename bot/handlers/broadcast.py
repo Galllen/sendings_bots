@@ -16,7 +16,7 @@ from telethon.errors import (
 )
 from telethon.tl.functions.channels import JoinChannelRequest
 from telethon.tl.functions.messages import ImportChatInviteRequest, CheckChatInviteRequest
-from db.model import Message, Account, Chat, SentHistory, DailyStats  # ← КРИТИЧЕСКИ ВАЖНО: импорт моделей
+from db.model import Message, Account, Chat, SentHistory, DailyStats
 from db.base import (
     get_db,
     get_active_accounts,
@@ -28,19 +28,17 @@ from config import config
 
 logger = logging.getLogger(__name__)
 
-# Глобальные локи для защиты сессий
+
 _SESSION_LOCKS = {}
 
 
 def get_session_lock(session_file: str) -> asyncio.Lock:
-    """Возвращает уникальный лок для файла сессии"""
     if session_file not in _SESSION_LOCKS:
         _SESSION_LOCKS[session_file] = asyncio.Lock()
     return _SESSION_LOCKS[session_file]
 
 
 def extract_invite_hash(invite_link: str) -> str:
-    """Извлекает хеш приглашения из ссылки"""
     invite_link = invite_link.strip()
     match = re.search(r't\.me/\+([a-zA-Z0-9_-]+)', invite_link)
     if match:
@@ -54,7 +52,6 @@ def extract_invite_hash(invite_link: str) -> str:
 
 
 async def ensure_chat_membership(client, chat_id: str, account_phone: str) -> bool:
-    """Проверяет и при необходимости вступает в чат"""
     try:
         chat_id = chat_id.strip()
         is_invite_link = any(x in chat_id.lower() for x in ['t.me/+', 't.me/joinchat', 'telegram.me/+'])
@@ -105,13 +102,11 @@ async def ensure_chat_membership(client, chat_id: str, account_phone: str) -> bo
 
 
 async def send_message_with_account(account, chat_id: str, message_content: str) -> tuple[bool, str]:
-    """Отправляет сообщение через аккаунт с полной обработкой ошибок"""
     if not is_account_session_valid(account.session_file):
         logger.warning(f"⚠️ Сессия недоступна для {account.phone}. Деактивируем аккаунт.")
         toggle_account_status(account.id)
         return False, "Сессия недоступна"
 
-    # 🔒 Захватываем лок для этой сессии
     session_lock = get_session_lock(account.session_file)
     async with session_lock:
         client = TelegramClient(
@@ -126,12 +121,10 @@ async def send_message_with_account(account, chat_id: str, message_content: str)
             if not await client.is_user_authorized():
                 raise AuthKeyUnregisteredError()
 
-            # Проверяем/вступаем в чат
             if not await ensure_chat_membership(client, chat_id, account.phone):
                 await client.disconnect()
                 return False, "Не удалось вступить в чат"
 
-            # Отправляем сообщение
             await client.send_message(chat_id, message_content)
             await client.disconnect()
 
@@ -169,14 +162,12 @@ async def send_message_with_account(account, chat_id: str, message_content: str)
 
 
 def get_messages_due_for_sending():
-    """Возвращает сообщения, готовые к отправке (поддержка дробных интервалов)"""
     db = next(get_db())
     try:
         messages = db.query(Message).filter(Message.is_enabled == True).all()
         due_messages = []
 
         for msg in messages:
-            # Теперь интервал в часах может быть дробным (0.1 = 6 минут)
             interval_timedelta = timedelta(hours=float(msg.interval_hours))
 
             last_sent = db.query(SentHistory) \
@@ -193,73 +184,78 @@ def get_messages_due_for_sending():
 
 
 async def distribute_and_send_messages():
-    """Распределяет чаты между аккаунтами и отправляет сообщения"""
     logger.info("🚀 Запуск цикла отправки сообщений...")
-
-    # Получаем сообщения, готовые к отправке
     due_messages = get_messages_due_for_sending()
-
     if not due_messages:
         logger.info("📭 Нет сообщений, готовых к отправке")
         return
 
-    logger.info(f"📬 Найдено {len(due_messages)} сообщений для отправки")
-
-    # Получаем активные аккаунты
     accounts = get_active_accounts()
-
     if not accounts:
         logger.warning("👤 Нет активных аккаунтов с валидной сессией")
         return
 
-    logger.info(f"👥 Используем {len(accounts)} активных аккаунтов")
+    logger.info(f"📬 Найдено {len(due_messages)} сообщений, аккаунтов: {len(accounts)}")
 
-    # Отправляем каждое сообщение
     for message in due_messages:
         chats = get_chats_by_message_id(message.id)
         active_chats = [c for c in chats if c.is_enabled]
-
         if not active_chats:
             logger.info(f"📭 У сообщения '{message.name}' нет активных чатов")
             continue
 
-        logger.info(
-            f"📨 Отправка сообщения '{message.name}' (интервал: {message.interval_hours}ч) в {len(active_chats)} чатов")
+        logger.info(f"📨 Отправка '{message.name}' в {len(active_chats)} чатов")
 
-        # Распределяем чаты между аккаунтами (раунд-робин)
-        for i, chat in enumerate(active_chats):
-            account = accounts[i % len(accounts)]  # Циклическое распределение
+        for chat in active_chats:
+            success = False
+            attempts = 0
+            max_attempts = 3
+            accounts_pool = accounts.copy()
+            last_error = None
+            used_account = None
 
-            logger.debug(f"🔄 Отправка в {chat.title or chat.chat_id} через {account.phone}")
+            while attempts < max_attempts and accounts_pool and not success:
+                account = accounts_pool.pop(0)
+                attempts += 1
+                logger.debug(f"Попытка {attempts} для чата {chat.title} через {account.phone}")
 
-            success, result = await send_message_with_account(
-                account,
-                chat.chat_id,
-                message.content
-            )
+                success, result = await send_message_with_account(
+                    account,
+                    chat.chat_id,
+                    message.content
+                )
 
-            # Записываем в историю
+                if success:
+                    used_account = account
+                    break
+                else:
+                    last_error = result
+                    logger.warning(f"Неудачная попытка {attempts} для чата {chat.title} через {account.phone}: {result}")
+                    await asyncio.sleep(1)
+
             db = next(get_db())
             try:
                 history = SentHistory(
-                    account_id=account.id,
+                    account_id=used_account.id if success else None,
                     message_id=message.id,
                     chat_id=chat.id,
                     status='success' if success else 'failed',
-                    error_message=None if success else result
+                    error_message=None if success else last_error
                 )
                 db.add(history)
                 db.commit()
             finally:
                 db.close()
 
-            # Обновляем статистику
-            await update_daily_stats(account.id, success)
+            if success:
+                await update_daily_stats(used_account.id, True)
+                logger.info(f"✅ Сообщение в {chat.title} отправлено через {used_account.phone}")
+            else:
+                logger.error(f"❌ Не удалось отправить в {chat.title} после {max_attempts} попыток. Последняя ошибка: {last_error}")
 
-            # Пауза между отправками (2-4 сек для соблюдения лимитов)
             await asyncio.sleep(random.uniform(2.0, 4.0))
 
-        logger.info(f"✅ Сообщение '{message.name}' отправлено во все чаты")
+        logger.info(f"✅ Сообщение '{message.name}' обработано")
 
     logger.info("🏁 Цикл отправки завершён")
 
@@ -288,23 +284,17 @@ async def update_daily_stats(account_id: int, success: bool):
 
 
 async def periodic_broadcast():
-    """
-    Фоновая задача периодической отправки сообщений
-    Запускается каждые 5 минут для проверки готовых к отправке сообщений
-    """
     logger.info("⏰ Запуск фоновой задачи периодической отправки")
 
     while True:
         try:
             await distribute_and_send_messages()
 
-            # Следующая проверка через 5 минут
             await asyncio.sleep(300)
-
         except asyncio.CancelledError:
-            logger.info("🛑 Задача периодической отправки остановлена")
+            logger.info("🛑 Задач а периодической отправки остановлена")
             break
 
         except Exception as e:
             logger.exception(f"🔥 Критическая ошибка в задаче отправки: {e}")
-            await asyncio.sleep(60)  # Пауза 1 минута перед повтором
+            await asyncio.sleep(60)
