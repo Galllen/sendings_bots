@@ -1,4 +1,5 @@
 from aiogram import types, Router
+from aiogram.fsm.context import FSMContext
 from bot.navigate.keyboards import main_menu_kb, reply_menu_kb
 from db.base import get_user_role, set_user_role
 from bot.logger import get_logger
@@ -7,7 +8,7 @@ logger = get_logger(__name__)
 router = Router()
 
 @router.message(lambda msg: msg.text == "/start")
-async def cmd_start(message: types.Message):
+async def cmd_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     role = get_user_role(user_id)
 
@@ -15,6 +16,8 @@ async def cmd_start(message: types.Message):
         await message.answer("❌ У вас нет доступа к этому боту.")
         logger.warning(f"Access denied for user {user_id} (role: {role}).")
         return
+
+    await state.clear()
 
     logger.info(f"User {user_id} (admin) started the bot.")
     await message.answer("Выберите действие:", reply_markup=reply_menu_kb())

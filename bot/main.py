@@ -63,10 +63,11 @@ async def main():
     logger.info("Starting bot...")
     dp.include_router(router)
 
+    dp.include_router(start_router)
+
     dp.include_router(message_router)
     dp.include_router(accounts_router)
     dp.include_router(chats_router)
-    dp.include_router(start_router)
     dp.include_router(queue_router)
 
     membership_task = asyncio.create_task(periodic_membership_check())
