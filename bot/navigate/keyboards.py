@@ -16,6 +16,7 @@ def main_menu_kb():
         [InlineKeyboardButton(text="📃 Сообщения", callback_data="messages:start:0")],
         [InlineKeyboardButton(text="👤 Аккаунты", callback_data="accounts:start:0")],
         [InlineKeyboardButton(text="💬 Чаты", callback_data="chats:start:0")],
+        [InlineKeyboardButton(text="📋 Очереди", callback_data="queues:start:0")],
         [InlineKeyboardButton(text="📤 Отправления", callback_data="broadcast_history:start:0")]
     ])
     return keyboard
@@ -221,6 +222,47 @@ def chats_list_kb_for_history(chats, offset, total):
 def back_to_history_menu_kb():
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="⬅️ Назад к списку чатов", callback_data="back_to_broadcast_history")],
+        [InlineKeyboardButton(text="🔙 Назад к меню", callback_data="main_menu")]
+    ])
+    return kb
+
+
+def queues_list_kb(queues, offset, total):
+    keyboard = []
+    for q in queues:
+        status_icon = "✅" if q.is_active else "🚫"
+        name = truncate(q.name)
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"{status_icon} {q.id}. {name}",
+                callback_data=f"queue:{q.id}"
+            )
+        ])
+
+    nav_buttons = []
+    limit = 5
+    if offset > 0:
+        nav_buttons.append(InlineKeyboardButton(text="◀️ Назад", callback_data=f"queues:start:{offset - limit}"))
+    if offset + limit < total:
+        nav_buttons.append(InlineKeyboardButton(text="Далее ▶️", callback_data=f"queues:start:{offset + limit}"))
+
+    action_buttons = [
+        InlineKeyboardButton(text="➕ Добавить", callback_data="queue_add"),
+        InlineKeyboardButton(text="🔙 Назад к меню", callback_data="main_menu")
+    ]
+
+    if nav_buttons:
+        keyboard.append(nav_buttons)
+    keyboard.append(action_buttons)
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def queue_detail_kb(queue_id: int, is_active: bool):
+    status_btn_text = "🔴 Деактивировать" if is_active else "🟢 Активировать"
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=status_btn_text, callback_data=f"toggle_queue:{queue_id}")],
+        [InlineKeyboardButton(text="🗑️ Удалить", callback_data=f"del_queue:{queue_id}")],
+        [InlineKeyboardButton(text="⬅️ Назад к списку", callback_data="back_to_queues")],
         [InlineKeyboardButton(text="🔙 Назад к меню", callback_data="main_menu")]
     ])
     return kb

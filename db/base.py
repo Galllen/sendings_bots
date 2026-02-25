@@ -4,7 +4,8 @@ from datetime import datetime, timedelta
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from bot import logger
-from db.model import Base, Message, Chat, MessageChatMapping, Account, User, Tag, SentHistory, DailyStats
+from db.model import Base, Message, Chat, MessageChatMapping, Account, User, Tag, SentHistory, DailyStats, Queue, \
+    QueueChat, QueueMessage
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -180,10 +181,10 @@ def set_user_role(user_id: int, username: str, role: str = "user"):
         db.close()
 
 
-def save_message(name: str, content: str, interval_hours: float):
+def save_message(name: str, content: str):
     db = next(get_db())
     try:
-        new_msg = Message(name=name, content=content, interval_hours=float(interval_hours))
+        new_msg = Message(name=name, content=content)
         db.add(new_msg)
         db.commit()
         db.refresh(new_msg)
@@ -229,6 +230,16 @@ def save_account(phone, session_file, api_id=None, api_hash=None, is_active=True
             db.commit()
             db.refresh(account)
             return account.id
+    finally:
+        db.close()
+
+def get_all_messages(only_enabled: bool = True):
+    db = next(get_db())
+    try:
+        query = db.query(Message)
+        if only_enabled:
+            query = query.filter(Message.is_enabled == True)
+        return query.order_by(Message.id).all()
     finally:
         db.close()
 
@@ -407,5 +418,120 @@ def get_sent_history_by_chat(chat_id: int, limit: int = 10):
             .all()
         )
         return history
+    finally:
+        db.close()
+
+
+# ---------- Queue ----------
+
+
+def get_queues_paginated(offset: int, limit: int):
+    db = next(get_db())
+    try:
+        queues = db.query(Queue).order_by(Queue.id).offset(offset).limit(limit).all()
+        total = db.query(Queue).count()
+        return queues, total
+    finally:
+        db.close()
+
+
+def get_queue_by_id(queue_id: int):
+    db = next(get_db())
+    try:
+        return db.query(Queue).filter(Queue.id == queue_id).first()
+    finally:
+        db.close()
+
+
+def toggle_queue_status(queue_id: int):
+    db = next(get_db())
+    try:
+        queue = db.query(Queue).filter(Queue.id == queue_id).first()
+        if queue:
+            queue.is_active = not queue.is_active
+            db.commit()
+            return queue.is_active
+    finally:
+        db.close()
+
+
+def delete_queue(queue_id: int) -> bool:
+    db = next(get_db())
+    try:
+        queue = db.query(Queue).filter(Queue.id == queue_id).first()
+        if not queue:
+            return False
+        db.delete(queue)
+        db.commit()
+        return True
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Ошибка удаления очереди {queue_id}: {e}")
+        return False
+    finally:
+        db.close()
+
+
+def create_queue(name: str, interval_minutes: int, time_start: str = "10:00", time_end: str = "20:00") -> int:
+    db = next(get_db())
+    try:
+        queue = Queue(
+            name=name,
+            interval_minutes=interval_minutes,
+            time_start=time_start,
+            time_end=time_end
+        )
+        db.add(queue)
+        db.commit()
+        db.refresh(queue)
+        return queue.id
+    finally:
+        db.close()
+
+
+def add_queue_messages(queue_id: int, message_ids: list[int]):
+    db = next(get_db())
+    try:
+        for pos, msg_id in enumerate(message_ids):
+            qm = QueueMessage(queue_id=queue_id, message_id=msg_id, position=pos)
+            db.add(qm)
+        db.commit()
+    finally:
+        db.close()
+
+
+def add_queue_chats(queue_id: int, chat_ids: list[int]):
+    db = next(get_db())
+    try:
+        for chat_id in chat_ids:
+            qc = QueueChat(queue_id=queue_id, chat_id=chat_id)
+            db.add(qc)
+        db.commit()
+    finally:
+        db.close()
+
+
+def get_queue_messages(queue_id: int):
+    db = next(get_db())
+    try:
+        qms = db.query(QueueMessage).filter(QueueMessage.queue_id == queue_id).order_by(QueueMessage.position).all()
+        return [qm.message for qm in qms]
+    finally:
+        db.close()
+
+
+def get_queue_chats(queue_id: int):
+    db = next(get_db())
+    try:
+        qcs = db.query(QueueChat).filter(QueueChat.queue_id == queue_id).all()
+        return [qc.chat for qc in qcs]
+    finally:
+        db.close()
+
+
+def get_active_queues():
+    db = next(get_db())
+    try:
+        return db.query(Queue).filter(Queue.is_active == True).all()
     finally:
         db.close()

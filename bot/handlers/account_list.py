@@ -36,7 +36,6 @@ def get_session_path(phone: str) -> str:
     return os.path.join(SESSIONS_DIR, f"account_{safe_phone}.session")
 
 
-# === ОБРАБОТЧИК СПИСКА АККАУНТОВ ===
 @router.callback_query(lambda c: c.data.startswith("accounts:start:"))
 async def show_accounts_list(callback: types.CallbackQuery, state: FSMContext):
     try:
@@ -54,7 +53,6 @@ async def show_accounts_list(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer(f"Ошибка загрузки списка: {str(e)}", show_alert=True)
 
 
-# === ОБРАБОТЧИК ВОЗВРАТА К СПИСКУ ===
 @router.callback_query(lambda c: c.data == "back_to_accounts")
 async def back_to_accounts(callback: types.CallbackQuery, state: FSMContext):
     accounts, total = await asyncio.to_thread(get_accounts_paginated, 0, 5)
@@ -65,7 +63,6 @@ async def back_to_accounts(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-# === ДЕТАЛИ АККАУНТА ===
 @router.callback_query(lambda c: c.data.startswith("account:"))
 async def show_account_detail(callback: types.CallbackQuery, state: FSMContext):
     try:
@@ -97,7 +94,6 @@ async def show_account_detail(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer(f"Ошибка: {str(e)}", show_alert=True)
 
 
-# === ПЕРЕКЛЮЧЕНИЕ СТАТУСА АККАУНТА ===
 @router.callback_query(lambda c: c.data.startswith("toggle_account:"))
 async def toggle_account(callback: types.CallbackQuery, state: FSMContext):
     try:
@@ -115,7 +111,6 @@ async def toggle_account(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer(f"Ошибка: {str(e)}", show_alert=True)
 
 
-# === НАЧАЛО ДОБАВЛЕНИЯ АККАУНТА ===
 @router.callback_query(lambda c: c.data == "account_add")
 async def prompt_add_account(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.answer(
@@ -127,7 +122,6 @@ async def prompt_add_account(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-# === ВВОД НОМЕРА ТЕЛЕФОНА ===
 @router.message(AddingAccount.waiting_for_phone)
 async def process_account_phone(message: types.Message, state: FSMContext):
     phone = message.text.strip().replace(' ', '').replace('-', '').replace('(', '').replace(')', '')
@@ -186,7 +180,6 @@ async def process_account_phone(message: types.Message, state: FSMContext):
         await state.clear()
 
 
-# === ВВОД КОДА ПОДТВЕРЖДЕНИЯ ===
 @router.message(AddingAccount.waiting_for_code)
 async def process_code(message: types.Message, state: FSMContext):
     code = message.text.replace(' ', '').replace('-', '').strip()
@@ -255,7 +248,6 @@ async def process_code(message: types.Message, state: FSMContext):
         await state.clear()
 
 
-# === ВВОД ПАРОЛЯ 2FA ===
 @router.message(AddingAccount.waiting_for_password)
 async def process_password(message: types.Message, state: FSMContext):
     password = message.text.strip()

@@ -43,6 +43,21 @@ CREATE TABLE chats (
     FOREIGN KEY (tag_id) REFERENCES tags(id)
 );
 
+CREATE TABLE queue(
+    id INTEGER PRIMARY KEY ,
+    chats_id TEXT NOT NULL,
+    turn INTEGER NOT NULL AUTOINCREMENT,
+    message_id int NOT NULL,
+    timer FLOAT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    is_active BOOLEAN DEFAULT 1,
+    FOREIGN KEY (chats_id) references chats(id),
+    FOREIGN KEY (message_id) references messages(id)
+)
+
+
+
+
 CREATE TABLE messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,

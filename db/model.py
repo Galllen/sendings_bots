@@ -62,7 +62,6 @@ class Message(Base):
     id = Column(Integer, primary_key=True)
     name = Column(Text, nullable=False)
     content = Column(Text, nullable=False)
-    interval_hours = Column(Float, default=24.0)
     is_enabled = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     tag_id = Column(Integer, ForeignKey('tags.id'))
@@ -109,3 +108,43 @@ class DailyStats(Base):
     failed_count = Column(Integer, default=0)
 
     account = relationship('Account')
+
+
+class Queue(Base):
+    __tablename__ = 'queues'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(Text, nullable=False)
+    interval_minutes = Column(Integer, nullable=False)
+    time_start = Column(Text, default="10:00")
+    time_end = Column(Text, default="20:00")
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_sent_at = Column(DateTime, nullable=True)
+    last_sent_date = Column(DateTime, nullable=True)
+    current_index = Column(Integer, default=0)
+    messages = relationship('QueueMessage', back_populates='queue', cascade='all, delete-orphan')
+    chats = relationship('QueueChat', back_populates='queue', cascade='all, delete-orphan')
+
+
+class QueueMessage(Base):
+    __tablename__ = 'queue_messages'
+
+    id = Column(Integer, primary_key=True)
+    queue_id = Column(Integer, ForeignKey('queues.id', ondelete='CASCADE'), nullable=False)
+    message_id = Column(Integer, ForeignKey('messages.id', ondelete='CASCADE'), nullable=False)
+    position = Column(Integer, nullable=False)
+
+    queue = relationship('Queue', back_populates='messages')
+    message = relationship('Message')
+
+
+class QueueChat(Base):
+    __tablename__ = 'queue_chats'
+
+    id = Column(Integer, primary_key=True)
+    queue_id = Column(Integer, ForeignKey('queues.id', ondelete='CASCADE'), nullable=False)
+    chat_id = Column(Integer, ForeignKey('chats.id', ondelete='CASCADE'), nullable=False)
+
+    queue = relationship('Queue', back_populates='chats')
+    chat = relationship('Chat')

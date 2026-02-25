@@ -1,7 +1,6 @@
 import asyncio
 from datetime import datetime, timedelta
 
-from bot.handlers.broadcast import periodic_broadcast
 from bot.handlers.chat_membership import periodic_membership_check
 from bot.logger import get_logger
 from aiogram import Bot, Dispatcher, F, Router
@@ -11,7 +10,9 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from bot.handlers.message_list import router as message_router
 from bot.handlers.account_list import router as accounts_router
 from bot.handlers.chats_list import router as chats_router
-from bot.handlers.broadcast_history import router as broadcast_history_router
+from bot.handlers.queue_list import router as queue_router
+from bot.handlers.queue_broadcast import periodic_queue_broadcast
+
 from config import config
 from db.base import get_today_successful_sent_count, get_db
 from db.model import User
@@ -66,20 +67,23 @@ async def main():
     dp.include_router(accounts_router)
     dp.include_router(chats_router)
     dp.include_router(start_router)
-    dp.include_router(broadcast_history_router)
+    dp.include_router(queue_router)
 
-    broadcast_task = asyncio.create_task(periodic_broadcast())
     membership_task = asyncio.create_task(periodic_membership_check())
     report_task = asyncio.create_task(daily_report(bot))
+    queue_task = asyncio.create_task(periodic_queue_broadcast())
 
     try:
         await dp.start_polling(bot)
     finally:
-        broadcast_task.cancel()
+        queue_task.cancel()
+        try:
+            await queue_task
+        except asyncio.CancelledError:
+            pass
         membership_task.cancel()
         report_task.cancel()
         try:
-            await broadcast_task
             await membership_task
         except asyncio.CancelledError:
             pass

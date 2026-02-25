@@ -22,7 +22,6 @@ router = Router()
 class AddingMessage(StatesGroup):
     waiting_for_name = State()
     waiting_for_content = State()
-    waiting_for_interval = State()
 
 
 class LinkingChats(StatesGroup):
@@ -56,10 +55,7 @@ async def show_message_detail(callback: types.CallbackQuery):
     text = f"""
 📌 Сообщение: {msg.name}
 📝 Текст: {msg.content[:100]}{'...' if len(msg.content) > 100 else ''}
-⏱️ Интервал: {msg.interval_hours} ч
 ✅ Статус: {status}
-💬 Привязанные чаты:
-{chat_list}
 """.strip()
 
     await callback.message.edit_text(text, reply_markup=message_detail_kb(msg.id, msg.is_enabled))
@@ -109,10 +105,7 @@ async def toggle_message_status_handler(callback: types.CallbackQuery):
     text = f"""
 📌 Сообщение: {msg.name}
 📝 Текст: {msg.content[:100]}{'...' if len(msg.content) > 100 else ''}
-⏱️ Интервал: {msg.interval_hours} ч
 ✅ Статус: {status}
-💬 Привязанные чаты:
-{chat_list}
 """.strip()
 
     await callback.message.edit_text(text, reply_markup=message_detail_kb(msg.id, msg.is_enabled))
@@ -147,39 +140,14 @@ async def process_message_name(message: types.Message, state: FSMContext):
 
 
 @router.message(AddingMessage.waiting_for_content)
-async def process_message_content(message: types.Message, state: FSMContext):
-    await state.update_data(content=message.text)
-    await message.answer(
-        "Введите интервал отправки в часах (можно дробное значение):\n"
-        "• 0.1 = 6 минут\n"
-        "• 0.5 = 30 минут\n"
-        "• 1 = 1 час\n"
-        "• 24 = 1 день"
-    )
-    await state.set_state(AddingMessage.waiting_for_interval)
-
-
-@router.message(AddingMessage.waiting_for_interval)
 async def finish_add_message(message: types.Message, state: FSMContext):
     data = await state.get_data()
     name = data.get("name")
-    content = data.get("content")
+    content = message.text
 
-    try:
-        interval = float(message.text.strip().replace(',', '.'))
-        if interval < 0.1:
-            await message.answer("❌ Минимальный интервал: 0.1 часа (6 минут). Попробуйте снова:")
-            return
-        if interval > 168:  # 7 дней
-            await message.answer("❌ Максимальный интервал: 168 часов (7 дней). Попробуйте снова:")
-            return
-    except ValueError:
-        await message.answer("❌ Неверный формат. Введите число (например: 0.5, 1, 24):")
-        return
+    msg_id = save_message(name, content)
 
-    msg_id = save_message(name, content, interval)
-
-    await message.answer(f"✅ Сообщение '{name}' добавлено с интервалом {interval}ч!")
+    await message.answer(f"✅ Сообщение '{name}' добавлено!")
     await state.clear()
 
     offset = 0
@@ -276,10 +244,7 @@ async def process_chat_ids(message: types.Message, state: FSMContext):
         text = f"""
 📌 Сообщение: {msg.name}
 📝 Текст: {msg.content[:100]}{'...' if len(msg.content) > 100 else ''}
-⏱️ Интервал: {msg.interval_hours} ч
 ✅ Статус: {status}
-💬 Привязанные чаты:
-{chat_list}
 """.strip()
 
         await message.answer(text, reply_markup=message_detail_kb(msg.id, msg.is_enabled))

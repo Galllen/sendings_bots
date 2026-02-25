@@ -10,4 +10,4 @@ services:
       - .env
     working_dir: /app
     volumes:
-      - /root/tech_spec/bot.db:/app/bot.db
+      - ./bot.db:/app/bot.db

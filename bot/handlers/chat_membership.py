@@ -29,20 +29,16 @@ logger = logging.getLogger(__name__)
 
 
 def extract_invite_hash(invite_link: str) -> str:
-    """Извлекает хеш приглашения из ссылки вида https://t.me/+Abc123 или https://t.me/joinchat/Abc123"""
     invite_link = invite_link.strip()
 
-    # Случай 1: короткая ссылка t.me/+
     match = re.search(r't\.me/\+([a-zA-Z0-9_-]+)', invite_link)
     if match:
         return match.group(1)
 
-    # Случай 2: полная ссылка t.me/joinchat/
     match = re.search(r't\.me/joinchat/([a-zA-Z0-9_-]+)', invite_link)
     if match:
         return match.group(1)
 
-    # Случай 3: чистый хеш без домена
     if invite_link.startswith('+'):
         return invite_link[1:]
 
@@ -50,10 +46,7 @@ def extract_invite_hash(invite_link: str) -> str:
 
 
 async def check_and_join_chats(account, chats):
-    """
-    Проверяет участие аккаунта в чатах и вступает при необходимости
-    Возвращает: (успешно_вступлено, ошибки)
-    """
+
     if not is_account_session_valid(account.session_file):
         logger.warning(f"⚠️ Сессия недоступна для {account.phone}. Деактивируем аккаунт.")
         toggle_account_status(account.id)
@@ -71,7 +64,6 @@ async def check_and_join_chats(account, chats):
     try:
         await client.connect()
 
-        # Проверка авторизации
         if not await client.is_user_authorized():
             raise AuthKeyUnregisteredError()
 
@@ -86,49 +78,39 @@ async def check_and_join_chats(account, chats):
             chat_title = chat.title or chat_id
 
             try:
-                # === ШАГ 1: Определяем тип чата ===
                 is_invite_link = any(x in chat_id.lower() for x in ['t.me/+', 't.me/joinchat', 'telegram.me/+'])
                 is_username = chat_id.startswith('@') or (
                             not is_invite_link and '/' not in chat_id and not chat_id.lstrip('-').isdigit())
                 is_numeric_id = chat_id.lstrip('-').isdigit()
 
-                # === ШАГ 2: Проверяем, состоим ли мы уже в чате ===
                 already_in_chat = False
                 try:
                     if is_invite_link:
-                        # Для приватных ссылок проверяем через хеш
                         hash = extract_invite_hash(chat_id)
                         result = await client(CheckChatInviteRequest(hash))
                         if hasattr(result, 'participants') and me.id in [p.id for p in result.participants]:
                             already_in_chat = True
                     else:
-                        # Для публичных чатов/каналов
                         entity = await client.get_entity(chat_id)
                         participants = await client.get_participants(entity, limit=100)
                         if any(p.id == me.id for p in participants.users):
                             already_in_chat = True
                 except Exception as e:
-                    # Не критично — продолжаем попытку вступить
                     logger.debug(f"Не удалось проверить участие в {chat_title}: {e}")
 
                 if already_in_chat:
                     logger.debug(f"✅ Аккаунт {account.phone} уже состоит в чате '{chat_title}'")
                     continue
 
-                # === ШАГ 3: Вступаем в чат правильным методом ===
                 if is_invite_link:
-                    # Приватный чат по ссылке-приглашению
                     hash = extract_invite_hash(chat_id)
                     await client(ImportChatInviteRequest(hash))
                     logger.info(f"✅ Вступил в приватный чат '{chat_title}' по ссылке")
 
                 elif is_username or is_numeric_id:
-                    # Публичный чат/канал по username или ID
                     entity = await client.get_entity(chat_id)
 
-                    # Определяем тип: канал или группа
                     if hasattr(entity, 'broadcast') and entity.broadcast:
-                        # Это канал — используем JoinChannelRequest
                         await client(JoinChannelRequest(entity))
                         logger.info(f"✅ Подписался на канал '{chat_title}'")
                     else:
